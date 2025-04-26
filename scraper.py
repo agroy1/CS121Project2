@@ -1,7 +1,8 @@
 import re
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 
 def scraper(url, resp):
+
     links = extract_next_links(url, resp)
     return [link for link in links if is_valid(link)]
 
@@ -24,20 +25,21 @@ def extract_next_links(url, resp):
             href = anchor['href']
             absolute_url = urljoin(url, href)
             links.append(absolute_url)
-   except Exception as e:
-    print(f"Error during extracting links: {e}")
-   return links
+    except Exception as e:
+        print(f"Error during extracting links: {e}")
+    return links
 
 
 def is_valid(url):
     # Decide whether to crawl this url or not. 
     # If you decide to crawl it, return True; otherwise return False.
     # There are already some conditions that return False.
+    
+    #add valid domains check
+    
     try:
         parsed = urlparse(url)
         if parsed.scheme not in set(["http", "https"]):
-            return False
-        if not parsed.netloc.endswith("ics.uci.edu"): #new
             return False
         return not re.match(
             r".*\.(css|js|bmp|gif|jpe?g|ico"
