@@ -2,14 +2,20 @@ import re
 import time
 from urllib.parse import urlparse, urljoin
 from bs4 import BeautifulSoup
+import configparser
 
 # Global sets to track visited and blacklisted URLs
 visited_urls = set()
 blacklisted_urls = set()
 domain_access_time = {}
 
+config = configparser.ConfigParser()
+config.read('config.ini')
+
+politeness_delay = float(config['CRAWLER'].get('POLITENESS', 0.5))
+
 def scraper(url, resp):
-    enforce_politeness(url)
+    enforce_politeness(url, delay=politeness_delay)
     links = extract_next_links(url, resp)
     return [link for link in links if is_valid(link)]
 
