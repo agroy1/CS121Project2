@@ -1,12 +1,15 @@
 import re
+import time
 from urllib.parse import urlparse, urljoin
 from bs4 import BeautifulSoup
 
 # Global sets to track visited and blacklisted URLs
 visited_urls = set()
 blacklisted_urls = set()
+domain_access_time = {}
 
 def scraper(url, resp):
+    enforce_politeness(url)
     links = extract_next_links(url, resp)
     return [link for link in links if is_valid(link)]
 
@@ -86,10 +89,8 @@ def is_valid(url):
             print("Rejected: Scheme not http/https")
             return False
 
-        for domain in valid_domains:
-            if not parsed.netloc.endswith(domain): 
-                print("Rejected: Domain not allowed")
-                return False
+        if not any(parsed.netloc.endswith(domain) for domain in valid_domains):
+            return False
 
         # Block trap URLs containing suspicious patterns
         for keyword in trap_keywords:
@@ -119,3 +120,11 @@ def sentence_repetition(sentences, limit=3):
             if seen[sent] >= limit:
                 return False
     return True
+
+def enforce_politeness(url, delay=1):
+    domain = urlparse(url).netloc
+    now = time.time()
+    last_access = domain_access_time.get(domain, 0)
+    if now - last_access < delay:
+        time.sleep(delay - (now-last_access))
+    domain_access_time[domain] = time.time()
