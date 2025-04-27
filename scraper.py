@@ -2,6 +2,10 @@ import re
 from urllib.parse import urlparse, urljoin
 from bs4 import BeautifulSoup
 
+# Global sets to track visited and blacklisted URLs
+visited_urls = set()
+blacklisted_urls = set()
+
 def scraper(url, resp):
     links = extract_next_links(url, resp)
     return [link for link in links if is_valid(link)]
@@ -16,18 +20,49 @@ def extract_next_links(url, resp):
     #         resp.raw_response.url: the url, again
     #         resp.raw_response.content: the content of the page!
     # Return a list with the hyperlinks (as strings) scrapped from resp.raw_response.content
-    links = []
-    if resp.status != 200 or resp.raw_response is None:
-       return links
+    extracted_links = []
+
+    if resp.status != 200 or resp.raw_response is None or url in blacklisted_urls or url in visited_urls:
+       blacklist_urls.add(url)
+       return extracted_links
+
+    visited_urls.add(url)
+
     try:
-        soup = BeautifulSoup(resp.raw_response.content, "html.parser")
-        for anchor in soup.find_all("a", href=True):
-            href = anchor['href']
-            absolute_url = urljoin(url, href)
-            links.append(absolute_url)
-    except Exception as e:
-        print(f"Error during extracting links: {e}")
-    return links
+
+        page_soup = BeautifulSoup(resp.raw_response.content, "html.parser")
+        page_text = page_soup.get_text()
+        tokens = re.findall(r'\b\w+\b', page_text)
+
+        # Trap detection: If very few words, treat as low-value page
+        #low-value page = small pages filled with ads, redirects, traps
+        if len(tokens) < 200:
+            blacklist_urls.add(url)
+            return extracted_links
+
+        # Trap detection: check for heavy repetition of sentences
+        # Page could be archive pages or fake calendars
+        sentences = [s.strip() for s in page_text.split('.') if s.strip()]
+        if sentence_repetition(sentences, limit=4) is False:
+            blacklist_urls.add(url)
+            return extracted_links
+
+        for tag in page_soup.find_all("a", href=True):
+            candidate = urljoin(url, tag['href'])
+            candidate = candidate.split('#')[0]             #Removes URL fragment, if URL is https://ics.uci.edu/index.html#section2, removes the fragment #section2 to avoid duplicate URLs
+
+            # Avoid certain URL patterns manually
+            # Avoid PDFs, publication uploads
+            if any(trap in candidate for trap in ["/files/", "/papers/", "/publications/"]):
+                blacklist_urls.add(candidate)
+                continue
+
+            extracted_links.append(candidate)
+
+    except Exception as err:
+        print(f"Extraction error for {url}: {err}")
+
+    return extracted_links
 
 
 def is_valid(url):
@@ -35,17 +70,33 @@ def is_valid(url):
     # If you decide to crawl it, return True; otherwise return False.
     # There are already some conditions that return False.
     
+    print(f"Checking URL validity: {url}")
+
     #add valid domains check
     valid_domains = ["ics.uci.edu", "cs.uci.edu", "informatics.uci.edu", "stat.uci.edu", "today.uci.edu/department/information_computer_sciences"]
-    
+  
+    # Blacklist patterns (trap URLs)
+    trap_keywords = [
+        "/calendar", "/event", "?action=login", "timeline?", "/history", "/diff?version=", "?share=", "/?afg", "/img_"
+    ]
+
     try:
         parsed = urlparse(url)
         if parsed.scheme not in set(["http", "https"]):
+            print("Rejected: Scheme not http/https")
             return False
 
         for domain in valid_domains:
             if not parsed.netloc.endswith(domain): 
+                print("Rejected: Domain not allowed")
                 return False
+
+        # Block trap URLs containing suspicious patterns
+        for keyword in trap_keywords:
+            if keyword in url:
+                print(f"Rejected: matched trap keyword {keyword}")
+                return False
+
         return not re.match(
             r".*\.(css|js|bmp|gif|jpe?g|ico"
             + r"|png|tiff?|mid|mp2|mp3|mp4"
@@ -59,3 +110,12 @@ def is_valid(url):
     except TypeError:
         print ("TypeError for ", parsed)
         raise
+
+def sentence_repetition(sentences, limit=3):
+    seen = {}
+    for sent in sentences:
+        if len(sent) > 30:
+            seen[sent] = seen.get(sent, 0) + 1
+            if seen[sent] >= limit:
+                return False
+    return True
