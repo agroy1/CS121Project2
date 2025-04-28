@@ -4,6 +4,17 @@ from urllib.parse import urlparse, urljoin
 from bs4 import BeautifulSoup
 import configparser
 
+import nltk
+from nltk.corpus import stopwords
+from collections import Counter
+import string
+
+nltk.download('stopwords')
+nltk.download('punkt_tab') 
+
+url_to_words = {}
+subdomain_counter = {}
+
 # Global sets to track visited and blacklisted URLs
 visited_urls = set()
 blacklisted_urls = set()
@@ -13,6 +24,15 @@ config = configparser.ConfigParser()
 config.read('config.ini')
 
 politeness_delay = float(config['CRAWLER'].get('POLITENESS', 0.5))
+
+def clean_and_tokenize(text):
+    tokens = nltk.word_tokenize(text)
+    stop_words = set(stopwords.words('english'))
+    words = [
+        word.lower() for word in tokens
+        if word.isalpha() and word.lower() not in stop_words
+    ]
+    return words
 
 def scraper(url, resp):
     enforce_politeness(url, delay=politeness_delay)
@@ -46,6 +66,14 @@ def extract_next_links(url, resp):
         page_soup = BeautifulSoup(resp.raw_response.content, "html.parser")
         page_text = page_soup.get_text()
         tokens = re.findall(r'\b\w+\b', page_text)
+
+        words = clean_and_tokenize(page_text)
+        url_to_words[url] = words
+
+        parsed = urlparse(url)
+        if parsed.netloc.endswith('.uci.edu'):
+            subdomain = parsed.netloc
+            subdomain_counter[subdomain] = subdomain_counter.get(subdomain, 0) + 1
 
         # Trap detection: If very few words, treat as low-value page
         #low-value page = small pages filled with ads, redirects, traps
@@ -142,3 +170,48 @@ def enforce_politeness(url, delay=1):
     if now - last_access < delay:
         time.sleep(delay - (now-last_access))
     domain_access_time[domain] = time.time()
+
+def print_report():
+    from collections import Counter
+    import nltk
+    from nltk.corpus import stopwords
+
+    nltk.download('punkt')
+    nltk.download('stopwords')
+
+    stop_words = set(stopwords.words('english'))
+
+    print(f"Number of unique pages: {len(visited_urls)}")
+
+    longest_page = ""
+    longest_word_count = 0
+    for url in visited_urls:
+        if url in url_to_words:
+            word_count = len(url_to_words[url])
+            if word_count > longest_word_count:
+                longest_word_count = word_count
+                longest_page = url
+    print(f"Longest page URL: {longest_page} ({longest_word_count} words)")
+
+    all_words = []
+    for url in url_to_words:
+        all_words += url_to_words[url]
+
+    filtered_words = [w.lower() for w in all_words if w.isalpha() and w.lower() not in stop_words]
+    counter = Counter(filtered_words)
+    most_common_50 = counter.most_common(50)
+
+    print("\nTop 50 most common words:")
+    for word, freq in most_common_50:
+        print(f"{word}: {freq}")
+
+    subdomains = {}
+    for url in visited_urls:
+        parsed = urlparse(url)
+        netloc = parsed.netloc
+        if netloc.endswith(".uci.edu"):
+            subdomains[netloc] = subdomains.get(netloc, 0) + 1
+
+    print("\nSubdomains found (alphabetical):")
+    for subdomain in sorted(subdomains.keys()):
+        print(f"{subdomain}, {subdomains[subdomain]}")
