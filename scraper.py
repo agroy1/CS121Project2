@@ -25,6 +25,11 @@ config.read('config.ini')
 
 politeness_delay = float(config['CRAWLER'].get('POLITENESS', 0.5))
 
+def update_visited_count_log():
+    count = len(visited_urls)
+    with open("visited_count.txt", "w") as f:
+        f.write(f"Visited URLs: {count}\n")
+
 def clean_and_tokenize(text):
     tokens = nltk.word_tokenize(text)
     stop_words = set(stopwords.words('english'))
@@ -46,6 +51,7 @@ def scraper(url, resp):
     #unique url means: http://www.ics.uci.edu#aaa and http://www.ics.uci.edu#bbb are the same URL.
     if links is not None:
         visited_urls.add(normalized_url)
+        update_visited_count_log()
     
     return [link for link in links if is_valid(link)]
 
