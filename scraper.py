@@ -35,14 +35,17 @@ def clean_and_tokenize(text):
     return words
 
 def scraper(url, resp):
-    if url in visited_urls or url in blacklisted_urls:
+
+    normalized_url = url.split('#')[0]
+
+    if normalized_url in visited_urls or normalized_url in blacklisted_urls:
         return []
-    enforce_politeness(url)
-    links = extract_next_links(url, resp)
+    enforce_politeness(normalized_url)
+    links = extract_next_links(normalized_url, resp)
 
     #unique url means: http://www.ics.uci.edu#aaa and http://www.ics.uci.edu#bbb are the same URL.
     if links is not None:
-        visited_urls.add(url.split('#')[0])
+        visited_urls.add(normalized_url)
     
     return [link for link in links if is_valid(link)]
 
