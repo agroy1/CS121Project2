@@ -60,7 +60,7 @@ def extract_next_links(url, resp):
 
     if resp.status != 200 or resp.raw_response is None or url in blacklisted_urls:
         blacklisted_urls.add(url)
-        return extracted_links
+        return list(extracted_links)
 
     try:
 
@@ -93,7 +93,7 @@ def extract_next_links(url, resp):
             candidate = urljoin(url, tag['href'])
             candidate = candidate.split('#')[0]             # Removes URL fragment, if URL is https://ics.uci.edu/index.html#section2, removes the fragment #section2 to avoid duplicate URLs
 
-            if candidate in blacklisted_urls:
+            if candidate in blacklisted_urls or candidate in visited_urls:
                 continue  # Skip already seen or blacklisted URLs
 
             # Avoid certain URL patterns manually
