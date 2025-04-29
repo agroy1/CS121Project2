@@ -172,10 +172,6 @@ def enforce_politeness(url, delay=1):
     domain_access_time[domain] = time.time()
 
 def print_report():
-    from collections import Counter
-    import nltk
-    from nltk.corpus import stopwords
-
     nltk.download('punkt')
     nltk.download('stopwords')
 
