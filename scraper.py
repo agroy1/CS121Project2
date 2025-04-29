@@ -37,9 +37,13 @@ def clean_and_tokenize(text):
 def scraper(url, resp):
     if url in visited_urls or url in blacklisted_urls:
         return []
-    enforce_politeness(url, delay=politeness_delay)
+    enforce_politeness(url)
     links = extract_next_links(url, resp)
-    visited_urls.add(url)
+
+    #unique url means: http://www.ics.uci.edu#aaa and http://www.ics.uci.edu#bbb are the same URL.
+    if links is not None:
+        visited_urls.add(url.split('#')[0])
+    
     return [link for link in links if is_valid(link)]
 
 def extract_next_links(url, resp):
@@ -52,7 +56,7 @@ def extract_next_links(url, resp):
     #         resp.raw_response.url: the url, again
     #         resp.raw_response.content: the content of the page!
     # Return a list with the hyperlinks (as strings) scrapped from resp.raw_response.content
-    extracted_links = []
+    extracted_links = set()
 
     if resp.status != 200 or resp.raw_response is None or url in blacklisted_urls:
         blacklisted_urls.add(url)
@@ -98,12 +102,12 @@ def extract_next_links(url, resp):
                 blacklisted_urls.add(candidate)
                 continue
 
-            extracted_links.append(candidate)
+            extracted_links.add(candidate)
 
     except Exception as err:
         print(f"Extraction error for {url}: {err}")
 
-    return extracted_links
+    return list(extracted_links)
 
 
 def is_valid(url):
@@ -159,7 +163,7 @@ def sentence_repetition(sentences, limit=3):
                 return False
     return True
 
-def enforce_politeness(url, delay=1):
+def enforce_politeness(url, delay=politeness_delay):
     domain = urlparse(url).netloc
     now = time.time()
     last_access = domain_access_time.get(domain, 0)
