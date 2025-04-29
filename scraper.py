@@ -35,8 +35,11 @@ def clean_and_tokenize(text):
     return words
 
 def scraper(url, resp):
+    if url in visited_urls or url in blacklisted_urls:
+        return []
     enforce_politeness(url, delay=politeness_delay)
     links = extract_next_links(url, resp)
+    visited_urls.add(url)
     return [link for link in links if is_valid(link)]
 
 def extract_next_links(url, resp):
@@ -54,12 +57,6 @@ def extract_next_links(url, resp):
     if resp.status != 200 or resp.raw_response is None or url in blacklisted_urls:
         blacklisted_urls.add(url)
         return extracted_links
-
-    if url in visited_urls:
-        return extracted_links
-
-    visited_urls.add(url)
-
 
     try:
 
@@ -92,7 +89,7 @@ def extract_next_links(url, resp):
             candidate = urljoin(url, tag['href'])
             candidate = candidate.split('#')[0]             # Removes URL fragment, if URL is https://ics.uci.edu/index.html#section2, removes the fragment #section2 to avoid duplicate URLs
 
-            if candidate in visited_urls or candidate in blacklisted_urls:
+            if candidate in blacklisted_urls:
                 continue  # Skip already seen or blacklisted URLs
 
             # Avoid certain URL patterns manually
@@ -102,7 +99,6 @@ def extract_next_links(url, resp):
                 continue
 
             extracted_links.append(candidate)
-            visited_urls.add(candidate)
 
     except Exception as err:
         print(f"Extraction error for {url}: {err}")
