@@ -98,7 +98,7 @@ def extract_next_links(url, resp):
             # Avoid certain URL patterns manually
             # Avoid PDFs, publication uploads
             if any(trap in candidate for trap in ["/files/", "/papers/", "/publications/"]):
-                blacklist_urls.add(candidate)
+                blacklisted_urls.add(candidate)
                 continue
 
             extracted_links.append(candidate)
