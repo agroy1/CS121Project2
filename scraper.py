@@ -10,7 +10,7 @@ from collections import Counter
 import string
 
 nltk.download('stopwords')
-nltk.download('punkt_tab') 
+nltk.download('punkt_tab')                                                              
 
 url_to_words = {}
 subdomain_counter = {}
@@ -18,12 +18,18 @@ subdomain_counter = {}
 # Global sets to track visited and blacklisted URLs
 visited_urls = set()
 blacklisted_urls = set()
-domain_access_time = {}
+#domain_access_time = {}                                                                        #Commented out domain_access_time used in enforce_politeness
+
+# New: Track count and metrics for performance & crash recovery
+page_counter = 0                                                                                #Tracks how many unique pages have been visited
+last_visited_url = None                                                                         #Stores the most recent URL visited, used in crash recovery logging
+longest_last_page_url = ""                                                                      #Keeps the URL of the page with the highest number of valid (non-stopword) words
+longest_last_word_count = 0                                                                     #Keeps the word count of the longest page seen so far, used for comparison
 
 config = configparser.ConfigParser()
 config.read('config.ini')
 
-politeness_delay = float(config['CRAWLER'].get('POLITENESS', 0.5))
+#politeness_delay = float(config['CRAWLER'].get('POLITENESS', 0.5))                             #Removed politeness delay enforcement because it's handled in worker.py
 
 def update_visited_count_log():
     count = len(visited_urls)
@@ -41,19 +47,36 @@ def clean_and_tokenize(text):
 
 def scraper(url, resp):
 
+    global page_counter, last_visited_url, longest_last_page_url, longest_last_word_count       #Declare these as global to update crawl stats and crash recovery
+
     normalized_url = url.split('#')[0]
 
     if normalized_url in visited_urls or normalized_url in blacklisted_urls:
         return []
-    enforce_politeness(normalized_url)
-    links = extract_next_links(normalized_url, resp)
+#    enforce_politeness(normalized_url)                                                         #Commented out politeness
 
-    #unique url means: http://www.ics.uci.edu#aaa and http://www.ics.uci.edu#bbb are the same URL.
-    if links is not None:
-        visited_urls.add(normalized_url)
-        update_visited_count_log()
-    
-    return [link for link in links if is_valid(link)]
+    try:                                                                                        #Added try-catch for crash recovery just in case if crawler dies
+
+        print(f"[{time.strftime('%H:%M:%S')}] Visiting: {normalized_url}")                      #Prints timestamp and current page being visited for debugging
+        last_visited_url = normalized_url                                                       #Tracks last visited page for crash recovery
+
+        links = extract_next_links(normalized_url, resp)
+
+        if links:
+            visited_urls.add(normalized_url)
+            page_counter += 1                                                                   #Counts how many pages have been visited
+
+            if page_counter % 10 == 0:                                                          #Only write visited count to disk every 10 pages, instead of every single page, hopefully improves speed
+                update_visited_count_log()
+
+        return [link for link in links if is_valid(link)]
+
+     except Exception as e:                                                                     #Print crash recovery dump if scraper fails
+        print(f"CRASH RECOVERY DUMP — Last URL: {last_visited_url}")
+        print(f"Visited: {len(visited_urls)} | Blacklisted: {len(blacklisted_urls)}")
+        print(f"Longest page so far: {longest_last_page_url} ({longest_last_word_count} words)")
+        print(f"Frontier words mapped: {len(url_to_words)} URLs")
+        raise e                                                                                 #Still raise the exception so the framework can catch and log it
 
 def extract_next_links(url, resp):
     # Implementation required.
@@ -65,6 +88,9 @@ def extract_next_links(url, resp):
     #         resp.raw_response.url: the url, again
     #         resp.raw_response.content: the content of the page!
     # Return a list with the hyperlinks (as strings) scrapped from resp.raw_response.content
+
+    global longest_last_page_url, longest_last_word_count
+
     extracted_links = set()
 
     if resp.status != 200 or resp.raw_response is None or url in blacklisted_urls:
@@ -80,6 +106,10 @@ def extract_next_links(url, resp):
         words = clean_and_tokenize(page_text)
         url_to_words[url] = words
 
+        if len(words) > longest_last_word_count:                                                    #Updates longest last word count
+            longest_last_word_count = len(words)
+            longest_last_page_url = url
+
         parsed = urlparse(url)
         if parsed.netloc.endswith('.uci.edu'):
             subdomain = parsed.netloc
@@ -87,16 +117,16 @@ def extract_next_links(url, resp):
 
         # Trap detection: If very few words, treat as low-value page
         #low-value page = small pages filled with ads, redirects, traps
-        if len(tokens) < 200:
+        if len(tokens) < 200:                                                                       
             blacklisted_urls.add(url)
             return extracted_links
 
         # Trap detection: check for heavy repetition of sentences
         # Page could be archive pages or fake calendars
-        sentences = [s.strip() for s in page_text.split('.') if s.strip()]
-        if sentence_repetition(sentences, limit=4) is False:
-            blacklisted_urls.add(url)
-            return extracted_links
+        if len(words) < 5000:                                                                       #Updated heavy repetition checks, skips the checks for long pages with words > 5000 to avoid expensive checks                                                                                                     
+            if not sentence_repetition(text.split('.'), limit=5):
+                blacklisted_urls.add(url)
+                return extracted_links
 
         for tag in page_soup.find_all("a", href=True):
             candidate = urljoin(url, tag['href'])
@@ -163,7 +193,7 @@ def is_valid(url):
         print ("TypeError for ", parsed)
         raise
 
-def sentence_repetition(sentences, limit=3):
+def sentence_repetition(sentences, limit=5):
     seen = {}
     for sent in sentences:
         if len(sent) > 30:
@@ -172,13 +202,13 @@ def sentence_repetition(sentences, limit=3):
                 return False
     return True
 
-def enforce_politeness(url, delay=politeness_delay):
-    domain = urlparse(url).netloc
-    now = time.time()
-    last_access = domain_access_time.get(domain, 0)
-    if now - last_access < delay:
-        time.sleep(delay - (now-last_access))
-    domain_access_time[domain] = time.time()
+#def enforce_politeness(url, delay=politeness_delay):
+#    domain = urlparse(url).netloc
+#    now = time.time()
+#    last_access = domain_access_time.get(domain, 0)
+#    if now - last_access < delay:
+#        time.sleep(delay - (now-last_access))
+#    domain_access_time[domain] = time.time()
 
 def print_report():
 
