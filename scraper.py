@@ -71,7 +71,7 @@ def scraper(url, resp):
 
         return [link for link in links if is_valid(link)]
 
-     except Exception as e:                                                                     #Print crash recovery dump if scraper fails
+    except Exception as e:                                                                     #Print crash recovery dump if scraper fails
         print(f"CRASH RECOVERY DUMP — Last URL: {last_visited_url}")
         print(f"Visited: {len(visited_urls)} | Blacklisted: {len(blacklisted_urls)}")
         print(f"Longest page so far: {longest_last_page_url} ({longest_last_word_count} words)")
@@ -124,7 +124,7 @@ def extract_next_links(url, resp):
         # Trap detection: check for heavy repetition of sentences
         # Page could be archive pages or fake calendars
         if len(words) < 5000:                                                                       #Updated heavy repetition checks, skips the checks for long pages with words > 5000 to avoid expensive checks                                                                                                     
-            if not sentence_repetition(text.split('.'), limit=5):
+            if not sentence_repetition(page_text.split('.'), limit=5):
                 blacklisted_urls.add(url)
                 return extracted_links
 
