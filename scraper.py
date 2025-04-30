@@ -3,38 +3,87 @@ import time
 from urllib.parse import urlparse, urljoin
 from bs4 import BeautifulSoup
 import configparser
+import threading
 
 import nltk
 from nltk.corpus import stopwords
 from collections import Counter
 import string
 
-nltk.download('stopwords')
-nltk.download('punkt_tab')                                                              
+nltk.download('stopwords', quiet=True)
+nltk.download('punkt_tab', quiet=True)                                                              
 
-url_to_words = {}
-subdomain_counter = {}
+# Thread-safe collections using locks
+class ThreadSafeDict:
+    def __init__(self):
+        self.data = {}
+        self.lock = threading.RLock()
+        
+    def __getitem__(self, key):
+        with self.lock:
+            return self.data.get(key)
+            
+    def __setitem__(self, key, value):
+        with self.lock:
+            self.data[key] = value
+            
+    def get(self, key, default=None):
+        with self.lock:
+            return self.data.get(key, default)
+            
+    def __contains__(self, key):
+        with self.lock:
+            return key in self.data
+            
+    def items(self):
+        with self.lock:
+            return list(self.data.items())
+            
+    def __len__(self):
+        with self.lock:
+            return len(self.data)
 
-# Global sets to track visited and blacklisted URLs
-visited_urls = set()
-blacklisted_urls = set()
-#domain_access_time = {}                                                                        #Commented out domain_access_time used in enforce_politeness
+class ThreadSafeSet:
+    def __init__(self):
+        self.data = set()
+        self.lock = threading.RLock()
+        
+    def add(self, item):
+        with self.lock:
+            self.data.add(item)
+            
+    def __contains__(self, item):
+        with self.lock:
+            return item in self.data
+            
+    def __len__(self):
+        with self.lock:
+            return len(self.data)
 
-# New: Track count and metrics for performance & crash recovery
-page_counter = 0                                                                                #Tracks how many unique pages have been visited
-last_visited_url = None                                                                         #Stores the most recent URL visited, used in crash recovery logging
-longest_last_page_url = ""                                                                      #Keeps the URL of the page with the highest number of valid (non-stopword) words
-longest_last_word_count = 0                                                                     #Keeps the word count of the longest page seen so far, used for comparison
+url_to_words = ThreadSafeDict()
+subdomain_counter = ThreadSafeDict()
+visited_urls = ThreadSafeSet()
+blacklisted_urls = ThreadSafeSet()
+domain_access_time = ThreadSafeDict()
+
+file_lock = threading.RLock()
+stats_lock = threading.RLock()
+
+page_counter = 0
+last_visited_url = None
+longest_last_page_url = ""
+longest_last_word_count = 0
 
 config = configparser.ConfigParser()
 config.read('config.ini')
 
-#politeness_delay = float(config['CRAWLER'].get('POLITENESS', 0.5))                             #Removed politeness delay enforcement because it's handled in worker.py
+# politeness_delay = float(config['CRAWLER'].get('POLITENESS', 0.5))  # Re-enabled politeness delay
 
 def update_visited_count_log():
-    count = len(visited_urls)
-    with open("visited_count.txt", "w") as f:
-        f.write(f"Visited URLs: {count}\n")
+    with file_lock:
+        count = len(visited_urls)
+        with open("visited_count.txt", "w") as f:
+            f.write(f"Visited URLs: {count}\n")
 
 def clean_and_tokenize(text):
     tokens = nltk.word_tokenize(text)
@@ -46,37 +95,42 @@ def clean_and_tokenize(text):
     return words
 
 def scraper(url, resp):
-
-    global page_counter, last_visited_url, longest_last_page_url, longest_last_word_count       #Declare these as global to update crawl stats and crash recovery
+    global page_counter, last_visited_url, longest_last_page_url, longest_last_word_count
 
     normalized_url = url.split('#')[0]
 
     if normalized_url in visited_urls or normalized_url in blacklisted_urls:
         return []
-#    enforce_politeness(normalized_url)                                                         #Commented out politeness
+        
+    # enforce_politeness(normalized_url)  # Re-enabled politeness enforcement
 
-    try:                                                                                        #Added try-catch for crash recovery just in case if crawler dies
-
-        print(f"[{time.strftime('%H:%M:%S')}] Visiting: {normalized_url}")                      #Prints timestamp and current page being visited for debugging
-        last_visited_url = normalized_url                                                       #Tracks last visited page for crash recovery
+    try:
+        thread_name = threading.current_thread().name
+        print(f"[{time.strftime('%H:%M:%S')}] {thread_name} Visiting: {normalized_url}")
+        
+        with stats_lock:
+            last_visited_url = normalized_url
 
         links = extract_next_links(normalized_url, resp)
 
         if links:
             visited_urls.add(normalized_url)
-            page_counter += 1                                                                   #Counts how many pages have been visited
-
-            if page_counter % 10 == 0:                                                          #Only write visited count to disk every 10 pages, instead of every single page, hopefully improves speed
-                update_visited_count_log()
+            
+            with stats_lock:
+                global page_counter
+                page_counter += 1
+                if page_counter % 10 == 0:
+                    update_visited_count_log()
 
         return [link for link in links if is_valid(link)]
 
-    except Exception as e:                                                                     #Print crash recovery dump if scraper fails
-        print(f"CRASH RECOVERY DUMP — Last URL: {last_visited_url}")
-        print(f"Visited: {len(visited_urls)} | Blacklisted: {len(blacklisted_urls)}")
-        print(f"Longest page so far: {longest_last_page_url} ({longest_last_word_count} words)")
-        print(f"Frontier words mapped: {len(url_to_words)} URLs")
-        raise e                                                                                 #Still raise the exception so the framework can catch and log it
+    except Exception as e:
+        with stats_lock:
+            print(f"CRASH RECOVERY DUMP — Last URL: {last_visited_url}")
+            print(f"Visited: {len(visited_urls)} | Blacklisted: {len(blacklisted_urls)}")
+            print(f"Longest page so far: {longest_last_page_url} ({longest_last_word_count} words)")
+            print(f"Frontier words mapped: {len(url_to_words)} URLs")
+        raise e
 
 def extract_next_links(url, resp):
     # Implementation required.
@@ -88,7 +142,7 @@ def extract_next_links(url, resp):
     #         resp.raw_response.url: the url, again
     #         resp.raw_response.content: the content of the page!
     # Return a list with the hyperlinks (as strings) scrapped from resp.raw_response.content
-
+    
     global longest_last_page_url, longest_last_word_count
 
     extracted_links = set()
@@ -105,10 +159,11 @@ def extract_next_links(url, resp):
 
         words = clean_and_tokenize(page_text)
         url_to_words[url] = words
-
-        if len(words) > longest_last_word_count:                                                    #Updates longest last word count
-            longest_last_word_count = len(words)
-            longest_last_page_url = url
+        
+        with stats_lock:
+            if len(words) > longest_last_word_count:
+                longest_last_word_count = len(words)
+                longest_last_page_url = url
 
         parsed = urlparse(url)
         if parsed.netloc.endswith('.uci.edu'):
@@ -117,13 +172,13 @@ def extract_next_links(url, resp):
 
         # Trap detection: If very few words, treat as low-value page
         #low-value page = small pages filled with ads, redirects, traps
-        if len(tokens) < 200:                                                                       
+        if len(tokens) < 200:
             blacklisted_urls.add(url)
             return extracted_links
 
         # Trap detection: check for heavy repetition of sentences
         # Page could be archive pages or fake calendars
-        if len(words) < 5000:                                                                       #Updated heavy repetition checks, skips the checks for long pages with words > 5000 to avoid expensive checks                                                                                                     
+        if len(words) < 5000:
             if not sentence_repetition(page_text.split('.'), limit=5):
                 blacklisted_urls.add(url)
                 return extracted_links
@@ -133,7 +188,7 @@ def extract_next_links(url, resp):
             candidate = candidate.split('#')[0]             # Removes URL fragment, if URL is https://ics.uci.edu/index.html#section2, removes the fragment #section2 to avoid duplicate URLs
 
             if candidate in blacklisted_urls or candidate in visited_urls:
-                continue  # Skip already seen or blacklisted URLs
+                continue # Skip already seen or blacklisted URLs 
 
             # Avoid certain URL patterns manually
             # Avoid PDFs, publication uploads
@@ -153,8 +208,8 @@ def is_valid(url):
     # Decide whether to crawl this url or not. 
     # If you decide to crawl it, return True; otherwise return False.
     # There are already some conditions that return False.
-    
-    print(f"Checking URL validity: {url}")
+
+    # print(f"Checking URL validity: {url}")
 
     #add valid domains check
     valid_domains = ["ics.uci.edu", "cs.uci.edu", "informatics.uci.edu", "stat.uci.edu", "today.uci.edu/department/information_computer_sciences"]
@@ -167,7 +222,7 @@ def is_valid(url):
     try:
         parsed = urlparse(url)
         if parsed.scheme not in set(["http", "https"]):
-            print("Rejected: Scheme not http/https")
+            # print("Rejected: Scheme not http/https")
             return False
 
         if not any(parsed.netloc.endswith(domain) for domain in valid_domains):
@@ -176,7 +231,7 @@ def is_valid(url):
         # Block trap URLs containing suspicious patterns
         for keyword in trap_keywords:
             if keyword in url:
-                print(f"Rejected: matched trap keyword {keyword}")
+                # print(f"Rejected: matched trap keyword {keyword}")
                 return False
 
         return not re.match(
@@ -190,7 +245,7 @@ def is_valid(url):
             + r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower())
 
     except TypeError:
-        print ("TypeError for ", parsed)
+        print("TypeError for ", parsed)
         raise
 
 def sentence_repetition(sentences, limit=5):
@@ -202,33 +257,38 @@ def sentence_repetition(sentences, limit=5):
                 return False
     return True
 
-#def enforce_politeness(url, delay=politeness_delay):
-#    domain = urlparse(url).netloc
-#    now = time.time()
-#    last_access = domain_access_time.get(domain, 0)
-#    if now - last_access < delay:
-#        time.sleep(delay - (now-last_access))
-#    domain_access_time[domain] = time.time()
+# def enforce_politeness(url, delay=politeness_delay):
+#     """
+#     Enforce politeness for each domain by ensuring sufficient delay between requests.
+#     Each thread will wait if needed to maintain politeness to the same domain.
+#     """
+#     domain = urlparse(url).netloc
+#     now = time.time()
+    
+#     with threading.RLock():  # Use a lock when checking/updating access times
+#         last_access = domain_access_time.get(domain, 0)
+#         if now - last_access < delay:
+#             sleep_time = delay - (now-last_access)
+#             time.sleep(sleep_time)  # Sleep to maintain politeness
+#         domain_access_time[domain] = time.time()
 
 def print_report():
-
     stop_words = set(stopwords.words('english'))
 
     print(f"Number of unique pages: {len(visited_urls)}")
 
     longest_page = ""
     longest_word_count = 0
-    for url in visited_urls:
-        if url in url_to_words:
-            word_count = len(url_to_words[url])
-            if word_count > longest_word_count:
-                longest_word_count = word_count
-                longest_page = url
+    for url, words in url_to_words.items():
+        word_count = len(words)
+        if word_count > longest_word_count:
+            longest_word_count = word_count
+            longest_page = url
     print(f"Longest page URL: {longest_page} ({longest_word_count} words)")
 
     all_words = []
-    for url in url_to_words:
-        all_words += url_to_words[url]
+    for url, words in url_to_words.items():
+        all_words.extend(words)
 
     filtered_words = [w.lower() for w in all_words if w.isalpha() and w.lower() not in stop_words]
     counter = Counter(filtered_words)
@@ -239,11 +299,8 @@ def print_report():
         print(f"{word}: {freq}")
 
     subdomains = {}
-    for url in visited_urls:
-        parsed = urlparse(url)
-        netloc = parsed.netloc
-        if netloc.endswith(".uci.edu"):
-            subdomains[netloc] = subdomains.get(netloc, 0) + 1
+    for subdomain, count in subdomain_counter.items():
+        subdomains[subdomain] = count
 
     print("\nSubdomains found (alphabetical):")
     for subdomain in sorted(subdomains.keys()):
