@@ -73,6 +73,11 @@ class Frontier(object):
         #     self.save.sync()
         #     self.to_be_downloaded.append(url)
         #     print(f"Added URL to Frontier: {url}")
+
+        if not is_valid(url):
+            self.logger.info(f"Rejecting invalid URL: {url}")
+            return
+
         with self.frontier_lock:
             if urlhash not in self.save:
                 self.save[urlhash] = (url, False)
