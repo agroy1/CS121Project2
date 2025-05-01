@@ -77,7 +77,7 @@ longest_last_word_count = 0
 config = configparser.ConfigParser()
 config.read('config.ini')
 
-# politeness_delay = float(config['CRAWLER'].get('POLITENESS', 0.5))  # Re-enabled politeness delay
+# politeness_delay = float(config['CRAWLER'].get('POLITENESS', 0.5))
 
 def update_visited_count_log():
     with file_lock:
@@ -102,10 +102,16 @@ def scraper(url, resp):
     if normalized_url in visited_urls or normalized_url in blacklisted_urls:
         return []
         
-    # enforce_politeness(normalized_url)  # Re-enabled politeness enforcement
+    # enforce_politeness(normalized_url)
 
     try:
         thread_name = threading.current_thread().name
+
+        if resp.status != 200 or resp.raw_response is None:
+            blacklisted_urls.add(normalized_url)
+            print(f"[{time.strftime('%H:%M:%S')}] {thread_name} Skipping non-200 URL: {normalized_url} (Status: {resp.status})")
+            return []
+            
         print(f"[{time.strftime('%H:%M:%S')}] {thread_name} Visiting: {normalized_url}")
         
         with stats_lock:
