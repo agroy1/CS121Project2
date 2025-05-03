@@ -222,7 +222,7 @@ def is_valid(url):
   
     # Blacklist patterns (trap URLs)
     trap_keywords = [
-        "/calendar", "/event", "?action=login", "timeline?", "/history", "/diff?version=", "?share=", "/?afg", "/img_"
+        "/calendar", "/event", "?action=login", "timeline?", "/history", "/diff?version=", "?share=", "/?afg", "/img_", ".ppsx"
     ]
 
     try:
@@ -248,7 +248,7 @@ def is_valid(url):
             + r"|data|dat|exe|bz2|tar|msi|bin|7z|psd|dmg|iso"
             + r"|epub|dll|cnf|tgz|sha1"
             + r"|thmx|mso|arff|rtf|jar|csv"
-            + r"|rm|smil|wmv|swf|wma|zip|rar|gz|img)$", parsed.path.lower())
+            + r"|rm|smil|wmv|swf|wma|zip|rar|gz|img|ppsx)$", parsed.path.lower())
 
     except TypeError:
         print("TypeError for ", parsed)
