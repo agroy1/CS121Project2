@@ -18,21 +18,34 @@ class Worker(Thread):
         super().__init__(daemon=True)
         
     def run(self):
-        while True:
+        MAX_EMPTY_RETRIES = 10
+        EMPTY_RETRY_SLEEP = 2 
+        empty_retries = 0
+
+        while empty_retries < MAX_EMPTY_RETRIES:
             tbd_url = self.frontier.get_tbd_url()
             if not tbd_url:
-                self.logger.info("Frontier is empty. Stopping Crawler.")
-                break
+                empty_retries += 1
+                self.logger.info(f"Frontier empty, retrying ({empty_retries}/{MAX_EMPTY_RETRIES})...")
+                time.sleep(EMPTY_RETRY_SLEEP)
+                continue
+
+            empty_retries = 0 
             resp = download(tbd_url, self.config, self.logger)
             if resp.status != 200:
                 self.frontier.mark_url_complete(tbd_url)
                 time.sleep(self.config.time_delay)
                 continue
+
             self.logger.info(
                 f"Downloaded {tbd_url}, status <{resp.status}>, "
-                f"using cache {self.config.cache_server}.")
+                f"using cache {self.config.cache_server}."
+            )
             scraped_urls = scraper.scraper(tbd_url, resp)
             for scraped_url in scraped_urls:
                 self.frontier.add_url(scraped_url)
             self.frontier.mark_url_complete(tbd_url)
             time.sleep(self.config.time_delay)
+
+        self.logger.info("Max empty retries reached. Worker exiting.")
+
