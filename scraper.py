@@ -281,33 +281,34 @@ def sentence_repetition(sentences, limit=5):
 def print_report():
     stop_words = set(stopwords.words('english'))
 
-    print(f"Number of unique pages: {len(visited_urls)}")
+    with open("report.txt", "w", encoding="utf-8") as f:
+        f.write(f"Number of unique pages: {len(visited_urls)}")
 
-    longest_page = ""
-    longest_word_count = 0
-    for url, words in url_to_words.items():
-        word_count = len(words)
-        if word_count > longest_word_count:
-            longest_word_count = word_count
-            longest_page = url
-    print(f"Longest page URL: {longest_page} ({longest_word_count} words)")
+        longest_page = ""
+        longest_word_count = 0
+        for url, words in url_to_words.items():
+            word_count = len(words)
+            if word_count > longest_word_count:
+                longest_word_count = word_count
+                longest_page = url
+        f.write(f"Longest page URL: {longest_page} ({longest_word_count} words)")
 
-    all_words = []
-    for url, words in url_to_words.items():
-        all_words.extend(words)
+        all_words = []
+        for url, words in url_to_words.items():
+            all_words.extend(words)
 
-    filtered_words = [w.lower() for w in all_words if w.isalpha() and w.lower() not in stop_words]
-    counter = Counter(filtered_words)
-    most_common_50 = counter.most_common(50)
+        filtered_words = [w.lower() for w in all_words if w.isalpha() and w.lower() not in stop_words]
+        counter = Counter(filtered_words)
+        most_common_50 = counter.most_common(50)
 
-    print("\nTop 50 most common words:")
-    for word, freq in most_common_50:
-        print(f"{word}: {freq}")
+        f.write("\nTop 50 most common words:")
+        for word, freq in most_common_50:
+            f.write(f"{word}: {freq}")
 
-    subdomains = {}
-    for subdomain, count in subdomain_counter.items():
-        subdomains[subdomain] = count
+        subdomains = {}
+        for subdomain, count in subdomain_counter.items():
+            subdomains[subdomain] = count
 
-    print("\nSubdomains found (alphabetical):")
-    for subdomain in sorted(subdomains.keys()):
-        print(f"{subdomain}, {subdomains[subdomain]}")
+        f.write("\nSubdomains found (alphabetical):")
+        for subdomain in sorted(subdomains.keys()):
+            f.write(f"{subdomain}, {subdomains[subdomain]}")
