@@ -103,8 +103,6 @@ def scraper(url, resp):
 
     if normalized_url in visited_urls or normalized_url in blacklisted_urls:
         return []
-        
-    enforce_politeness(normalized_url)
 
     try:
         thread_name = threading.current_thread().name
@@ -113,6 +111,7 @@ def scraper(url, resp):
             blacklisted_urls.add(normalized_url)
             print(f"[{time.strftime('%H:%M:%S')}] {thread_name} Skipping non-200 URL: {normalized_url} (Status: {resp.status})")
             return []
+        enforce_politeness(normalized_url)
             
         print(f"[{time.strftime('%H:%M:%S')}] {thread_name} Visiting: {normalized_url}")
         
@@ -120,15 +119,13 @@ def scraper(url, resp):
             last_visited_url = normalized_url
 
         links = extract_next_links(normalized_url, resp)
-
-        if links:
-            visited_urls.add(normalized_url)
+        visited_urls.add(normalized_url)
             
-            with stats_lock:
-                global page_counter
-                page_counter += 1
-                if page_counter % 10 == 0:
-                    update_visited_count_log()
+        with stats_lock:
+            global page_counter
+            page_counter += 1
+            if page_counter % 10 == 0:
+                update_visited_count_log()
 
         return [link for link in links if is_valid(link)]
 
