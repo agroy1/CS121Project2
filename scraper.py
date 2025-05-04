@@ -273,7 +273,7 @@ def enforce_politeness(url, delay=politeness_delay):
      domain = urlparse(url).netloc
      now = time.time()
      
-     with threading.RLock():  # Use a lock when checking/updating access times
+     with stats_lock:  # Use a lock when checking/updating access times
         last_access = domain_access_time.get(domain, 0)
         if now - last_access < delay:
              sleep_time = delay - (now-last_access)
@@ -283,8 +283,8 @@ def enforce_politeness(url, delay=politeness_delay):
 def print_report():
     stop_words = set(stopwords.words('english'))
 
-    with open("report.txt", "w", encoding="utf-8") as f:
-        f.write(f"Number of unique pages: {len(visited_urls)}")
+    with open("project2finalreport.txt", "w", encoding="utf-8") as f:
+        f.write(f"Number of unique pages: {len(visited_urls)}\n")
 
         longest_page = ""
         longest_word_count = 0
@@ -293,7 +293,7 @@ def print_report():
             if word_count > longest_word_count:
                 longest_word_count = word_count
                 longest_page = url
-        f.write(f"Longest page URL: {longest_page} ({longest_word_count} words)")
+        f.write(f"Longest page URL: {longest_page} ({longest_word_count} words)\n")
 
         all_words = []
         for url, words in url_to_words.items():
@@ -303,14 +303,14 @@ def print_report():
         counter = Counter(filtered_words)
         most_common_50 = counter.most_common(50)
 
-        f.write("\nTop 50 most common words:")
+        f.write("\nTop 50 most common words:\n")
         for word, freq in most_common_50:
-            f.write(f"{word}: {freq}")
+            f.write(f"{word}: {freq}\n")
 
         subdomains = {}
         for subdomain, count in subdomain_counter.items():
             subdomains[subdomain] = count
 
-        f.write("\nSubdomains found (alphabetical):")
+        f.write("\nSubdomains found (alphabetical):\n")
         for subdomain in sorted(subdomains.keys()):
-            f.write(f"{subdomain}, {subdomains[subdomain]}")
+            f.write(f"{subdomain}, {subdomains[subdomain]}\n")
