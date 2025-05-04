@@ -77,7 +77,9 @@ longest_last_word_count = 0
 config = configparser.ConfigParser()
 config.read('config.ini')
 
-# politeness_delay = float(config['CRAWLER'].get('POLITENESS', 0.5))
+
+politeness_delay = float(config['CRAWLER'].get('POLITENESS', 0.5))
+
 
 def update_visited_count_log():
     with file_lock:
@@ -102,7 +104,7 @@ def scraper(url, resp):
     if normalized_url in visited_urls or normalized_url in blacklisted_urls:
         return []
         
-    # enforce_politeness(normalized_url)
+    enforce_politeness(normalized_url)
 
     try:
         thread_name = threading.current_thread().name
@@ -263,20 +265,20 @@ def sentence_repetition(sentences, limit=5):
                 return False
     return True
 
-# def enforce_politeness(url, delay=politeness_delay):
-#     """
-#     Enforce politeness for each domain by ensuring sufficient delay between requests.
-#     Each thread will wait if needed to maintain politeness to the same domain.
-#     """
-#     domain = urlparse(url).netloc
-#     now = time.time()
-    
-#     with threading.RLock():  # Use a lock when checking/updating access times
-#         last_access = domain_access_time.get(domain, 0)
-#         if now - last_access < delay:
-#             sleep_time = delay - (now-last_access)
-#             time.sleep(sleep_time)  # Sleep to maintain politeness
-#         domain_access_time[domain] = time.time()
+def enforce_politeness(url, delay=politeness_delay):
+     """
+     Enforce politeness for each domain by ensuring sufficient delay between requests.
+     Each thread will wait if needed to maintain politeness to the same domain.
+     """
+     domain = urlparse(url).netloc
+     now = time.time()
+     
+     with threading.RLock():  # Use a lock when checking/updating access times
+        last_access = domain_access_time.get(domain, 0)
+        if now - last_access < delay:
+             sleep_time = delay - (now-last_access)
+             time.sleep(sleep_time)  # Sleep to maintain politeness
+        domain_access_time[domain] = time.time()
 
 def print_report():
     stop_words = set(stopwords.words('english'))
