@@ -201,10 +201,16 @@ def extract_next_links(url, resp):
                 blacklisted_urls.add(candidate)
                 continue
 
-            extracted_links.add(candidate)
+            try:
+                parsed_candidate = urlparse(candidate)
+                if parsed_candidate.scheme and parsed_candidate.netloc:
+                    extracted_links.add(candidate)
+            except ValueError:
+                blacklisted_urls.add(candidate)
+                continue
 
-    except Exception as err:
-        print(f"Extraction error for {url}: {err}")
+    except Exception:
+        blacklisted_urls.add(url)
 
     return list(extracted_links)
 
