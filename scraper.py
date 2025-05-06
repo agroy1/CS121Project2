@@ -201,10 +201,16 @@ def extract_next_links(url, resp):
                 blacklisted_urls.add(candidate)
                 continue
 
-            extracted_links.add(candidate)
+            try:
+                parsed_candidate = urlparse(candidate)
+                if parsed_candidate.scheme and parsed_candidate.netloc:
+                    extracted_links.add(candidate)
+            except ValueError:
+                blacklisted_urls.add(candidate)
+                continue
 
-    except Exception as err:
-        print(f"Extraction error for {url}: {err}")
+    except Exception:
+        blacklisted_urls.add(url)
 
     return list(extracted_links)
 
@@ -284,6 +290,7 @@ def print_report():
 
     with open("project2finalreport.txt", "w", encoding="utf-8") as f:
         f.write(f"Number of unique pages: {len(visited_urls)}\n")
+        # print(f"Number of unique pages: {len(visited_urls)}\n")
 
         longest_page = ""
         longest_word_count = 0
@@ -293,6 +300,7 @@ def print_report():
                 longest_word_count = word_count
                 longest_page = url
         f.write(f"Longest page URL: {longest_page} ({longest_word_count} words)\n")
+        # print(f"Longest page URL: {longest_page} ({longest_word_count} words)\n")
 
         all_words = []
         for url, words in url_to_words.items():
@@ -303,13 +311,18 @@ def print_report():
         most_common_50 = counter.most_common(50)
 
         f.write("\nTop 50 most common words:\n")
+        # print("\nTop 50 most common words:\n")
+        
         for word, freq in most_common_50:
             f.write(f"{word}: {freq}\n")
+            # print(f"{word}: {freq}\n")
 
         subdomains = {}
         for subdomain, count in subdomain_counter.items():
             subdomains[subdomain] = count
 
         f.write("\nSubdomains found (alphabetical):\n")
+        # print("\nSubdomains found (alphabetical):\n")
         for subdomain in sorted(subdomains.keys()):
             f.write(f"{subdomain}, {subdomains[subdomain]}\n")
+            # print(f"{subdomain}, {subdomains[subdomain]}\n")
